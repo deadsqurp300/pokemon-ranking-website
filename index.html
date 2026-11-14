@@ -507,6 +507,201 @@ let currentExpandedPokemonIndex = -1;
 let currentExpandedPokemonEntry = null;
 let currentLoadedGeneration = null;
 
+
+
+function isCosmeticForm(pokemonName, isDefault) {
+
+const name = pokemonName.toLowerCase();
+
+// Always preserve the default Pokemon variety
+if (isDefault) {
+    return false;
+}
+
+// --------------------------------------
+// GENERAL COSMETIC EXCLUSIONS
+// --------------------------------------
+
+// Pikachu costumes and special hats
+if (name.startsWith("pikachu-")) {
+    return true;
+}
+
+// All alternate Basculin appearances
+if (name.startsWith("basculin-")) {
+    return true;
+}
+
+// All Totem Pokemon
+if (name.includes("-totem")) {
+    return true;
+}
+
+// --------------------------------------
+// SPECIFIC FORM EXCLUSIONS
+// --------------------------------------
+
+// Paldean Tauros: Keep Combat Breed
+if (
+    name === "tauros-paldea-blaze" ||
+    name === "tauros-paldea-aqua"
+) {
+    return true;
+}
+
+// Keldeo: Keep Ordinary Form
+if (name === "keldeo-resolute") {
+    return true;
+}
+
+// Meloetta: Keep Aria Form
+if (name === "meloetta-pirouette") {
+    return true;
+}
+
+// Greninja: Exclude Battle Bond / Ash-Greninja
+if (name === "greninja-ash") {
+    return true;
+}
+
+// Meowstic: Keep Male
+if (name === "meowstic-female") {
+    return true;
+}
+
+// Aegislash: Keep Shield Form
+if (name === "aegislash-blade") {
+    return true;
+}
+
+// Pumpkaboo: Keep Average Size
+if (name.startsWith("pumpkaboo-")) {
+    return true;
+}
+
+// Gourgeist: Keep Average Size
+if (name.startsWith("gourgeist-")) {
+    return true;
+}
+
+// Zygarde: Exclude Power Construct Complete Form
+if (name === "zygarde-complete") {
+    return true;
+}
+
+// Minior: Keep Red Meteor Form
+if (
+    name.startsWith("minior-") &&
+    name !== "minior-red-meteor"
+) {
+    return true;
+}
+
+// Mimikyu: Exclude Busted Form
+if (name === "mimikyu-busted") {
+    return true;
+}
+
+// Magearna: Exclude Original Color
+if (name === "magearna-original") {
+    return true;
+}
+
+// Cramorant: Exclude Gulping and Gorging
+if (
+    name === "cramorant-gulping" ||
+    name === "cramorant-gorging"
+) {
+    return true;
+}
+
+// Toxtricity: Exclude Low Key Form,
+// including any Mega Low Key variants
+if (
+    name.includes("toxtricity") &&
+    name.includes("low-key")
+) {
+    return true;
+}
+
+// Eiscue: Exclude Noice Form
+if (name === "eiscue-noice") {
+    return true;
+}
+
+// Indeedee: Keep Male
+if (name === "indeedee-female") {
+    return true;
+}
+
+// Zarude: Exclude Dada Form
+if (name === "zarude-dada") {
+    return true;
+}
+
+// Basculegion: Keep Male
+if (name === "basculegion-female") {
+    return true;
+}
+
+// Oinkologne: Keep Male
+if (name === "oinkologne-female") {
+    return true;
+}
+
+// Maushold: Keep Family of Four
+if (name === "maushold-family-of-three") {
+    return true;
+}
+
+// Squawkabilly: Keep Green Plumage
+if (
+    name.startsWith("squawkabilly-") &&
+    !name.includes("green-plumage")
+) {
+    return true;
+}
+
+// Tatsugiri: Keep Curly Form.
+// For Mega Tatsugiri, keep only Curly Mega Form.
+if (
+    name.includes("tatsugiri") &&
+    !name.includes("curly")
+) {
+    return true;
+}
+
+// Dudunsparce: Keep Two-Segment Form
+if (name === "dudunsparce-three-segment") {
+    return true;
+}
+
+// Gimmighoul: Exclude Roaming Form
+if (name === "gimmighoul-roaming") {
+    return true;
+}
+
+// Koraidon and Miraidon: Keep default forms
+if (
+    (name.startsWith("koraidon-") ||
+     name.startsWith("miraidon-")) &&
+    !isDefault
+) {
+    return true;
+}
+
+// Ogerpon: Keep Teal Mask
+if (
+    name.startsWith("ogerpon-") &&
+    !name.includes("teal-mask")
+) {
+    return true;
+}
+
+return false;
+}
+
+
 async function buildExpandedPokemonList(generation) {
 
 generation = Number(generation);
@@ -520,7 +715,7 @@ if (
 }
 
 // Check whether we saved this generation in the browser
-const cacheKey = "expandedPokemonList_generation_" + generation;
+const cacheKey = "expandedPokemonList_v3_generation_" + generation;
 
 const savedList = localStorage.getItem(cacheKey);
 
@@ -595,7 +790,15 @@ for (
         );
 
         varieties.forEach(variety => {
-
+    // Skip purely cosmetic alternate forms
+    if (
+        isCosmeticForm(
+            variety.pokemon.name,
+            variety.is_default
+        )
+    ) {
+        return;
+    }
             const pokemonUrl = variety.pokemon.url;
 
             const pokemonId = Number(
