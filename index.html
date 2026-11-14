@@ -431,6 +431,152 @@
             8: [810, 905],
             9: [906, 1025]
         };
+        // ==========================================
+// EXPANDED POKEDEX SYSTEM
+// ==========================================
+
+let expandedPokemonList = [];
+let expandedPokemonGeneration = null;
+let currentExpandedPokemonIndex = -1;
+let currentExpandedPokemonEntry = null;
+let currentLoadedGeneration = null;
+
+async function buildExpandedPokemonList(generation) {
+
+generation = Number(generation);
+
+// Check whether we already have this generation in memory
+if (
+    expandedPokemonGeneration === generation &&
+    expandedPokemonList.length > 0
+) {
+    return expandedPokemonList;
+}
+
+// Check whether we saved this generation in the browser
+const cacheKey = "expandedPokemonList_generation_" + generation;
+
+const savedList = localStorage.getItem(cacheKey);
+
+if (savedList) {
+    try {
+        expandedPokemonList = JSON.parse(savedList);
+        expandedPokemonGeneration = generation;
+
+        return expandedPokemonList;
+    } catch (error) {
+        console.warn("Saved Pokedex cache was invalid.");
+    }
+}
+
+const range = generations[generation];
+const minimum = range[0];
+const maximum = range[1];
+
+const expandedList = [];
+const addedPokemonIds = new Set();
+
+document.getElementById("loading-message").textContent =
+    "Building expanded Pokedex...";
+
+// Load species in batches of 20 to avoid overwhelming the API
+const batchSize = 20;
+
+for (
+    let batchStart = minimum;
+    batchStart <= maximum;
+    batchStart += batchSize
+) {
+
+    const batchEnd = Math.min(
+        batchStart + batchSize - 1,
+        maximum
+    );
+
+    const speciesRequests = [];
+
+    for (
+        let dexId = batchStart;
+        dexId <= batchEnd;
+        dexId++
+    ) {
+
+        speciesRequests.push(
+            fetch(
+                "https://pokeapi.co/api/v2/pokemon-species/" +
+                dexId
+            ).then(response => {
+
+                if (!response.ok) {
+                    throw new Error(
+                        "Could not load species #" + dexId
+                    );
+                }
+
+                return response.json();
+            })
+        );
+    }
+
+    const speciesBatch = await Promise.all(speciesRequests);
+
+    // Process each species in National Pokedex order
+    speciesBatch.forEach(species => {
+
+        // Put the base Pokemon first
+        const varieties = [...species.varieties].sort(
+            (a, b) => Number(b.is_default) - Number(a.is_default)
+        );
+
+        varieties.forEach(variety => {
+
+            const pokemonUrl = variety.pokemon.url;
+
+            const pokemonId = Number(
+                pokemonUrl.split("/").filter(Boolean).pop()
+            );
+
+            // Prevent duplicate entries
+            if (addedPokemonIds.has(pokemonId)) {
+                return;
+            }
+
+            addedPokemonIds.add(pokemonId);
+
+            expandedList.push({
+                id: pokemonId,
+                name: variety.pokemon.name,
+                baseDexId: species.id,
+                isDefault: variety.is_default
+            });
+
+        });
+
+    });
+
+    document.getElementById("loading-message").textContent =
+        "Building expanded Pokedex... " +
+        batchEnd + " / " + maximum;
+}
+
+// Save the completed list
+expandedPokemonList = expandedList;
+expandedPokemonGeneration = generation;
+
+localStorage.setItem(
+    cacheKey,
+    JSON.stringify(expandedPokemonList)
+);
+
+console.log(
+    "Expanded Pokedex loaded:",
+    expandedPokemonList.length,
+    "entries"
+);
+
+return expandedPokemonList;
+}
+
 
         // Remember which Pokemon is currently displayed
         let currentPokemon = null;
@@ -444,128 +590,153 @@
 // The address of our Google Apps Script web app
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwz4F1hqtIVEVQ4RbFOpOnjp_K0ucDrNf3bibPsKtqKgCa8K_yMY-CMIK07OLjnJGhRxw/exec";
         // Load the next Pokemon in Pokedex order
-        async function loadRandomPokemon(forcedId = null) {
+        
+async function loadRandomPokemon(forcedId = null) {
 
-        const generation = document.getElementById("generation-select").value;
-        const range = generations[generation];
-
-        const minimum = range[0];
-        const maximum = range[1];
-
-        // If we are outside the selected generation, start at its beginning
-        // Use the session's Pokemon number if one was provided
-let pokemonId;
-
-if (forcedId !== null) {
-
-    pokemonId = Number(forcedId);
-
-} else {
-
-    // Otherwise, continue in normal Pokedex order
-    if (nextPokemonId < minimum || nextPokemonId > maximum) {
-        nextPokemonId = minimum;
-    }
-
-    pokemonId = nextPokemonId;
-    nextPokemonId++;
-
-}
-
-            const nextButton = document.getElementById("next-button");
-
-            nextButton.disabled = true;
-
-            document.getElementById("loading-message").textContent =
-                "Loading Pokemon...";
-
-            try {
-
-                // Ask PokeAPI for information about this Pokemon
-                const response = await fetch(
-                    "https://pokeapi.co/api/v2/pokemon/" + pokemonId
-                );
-
-                if (!response.ok) {
-                    throw new Error("Could not find Pokemon.");
-                }
-
-                const pokemon = await response.json();
-
-                // Save the Pokemon we just loaded
-                currentPokemon = pokemon;
-
-                // Update the Pokemon number
-                document.getElementById("pokemon-number").textContent =
-                    "Pokemon #" + String(pokemon.id).padStart(3, "0");
-
-                // Update the picture
-                document.getElementById("pokemon-image").src =
-                    pokemon.sprites.front_default;
-
-                document.getElementById("pokemon-image").alt =
-                    pokemon.name;
-
-                // Update the name
-                document.getElementById("pokemon-name").textContent =
-                    pokemon.name;
-
-                // Get the Pokemon's types and display them
-                const types = pokemon.types.map(typeInfo => {
-                    return typeInfo.type.name;
-                });
-
-                document.getElementById("pokemon-types").textContent =
-                    types.join(" / ");
-
-                // Reset the rating buttons
-                // Reset the rating buttons
-const buttons = document.querySelectorAll(
-    ".rating-buttons button"
+const generation = Number(
+    document.getElementById("generation-select").value
 );
 
-buttons.forEach(button => {
-    button.classList.remove("selected");
-});
+const nextButton = document.getElementById("next-button");
 
-// Check whether this player already rated this Pokemon
-const playerName = document.getElementById("player-name").value.trim();
+nextButton.disabled = true;
 
-const ratingKey = playerName.toLowerCase() + "_" + currentPokemon.id;
+document.getElementById("loading-message").textContent =
+    "Loading Pokemon...";
 
-const previousRating = ratings[ratingKey];
+try {
 
-if (playerName !== "" && previousRating) {
+    // Get the expanded Pokedex for this generation
+    const pokemonList = await buildExpandedPokemonList(generation);
 
-    // Highlight the previously selected rating
-    buttons[previousRating.rating - 1].classList.add("selected");
+    // Find which Pokemon should be displayed
+    if (forcedId !== null) {
 
-    document.getElementById("rating-message").textContent =
-        "You previously rated this Pokemon " +
-        previousRating.rating + " out of 5.";
+        // Multiplayer: load the Pokemon selected by the host
+        currentExpandedPokemonIndex = pokemonList.findIndex(
+            entry => entry.id === Number(forcedId)
+        );
 
-} else {
+        if (currentExpandedPokemonIndex === -1) {
+            throw new Error(
+                "Pokemon ID " + forcedId +
+                " was not found in this generation's expanded Pokedex."
+            );
+        }
 
-    document.getElementById("rating-message").textContent =
-        "Choose a rating!";
+    } else {
 
-}
+        // Reset to the beginning when changing generations
+        if (currentLoadedGeneration !== generation) {
+            currentExpandedPokemonIndex = 0;
+        } else {
+            currentExpandedPokemonIndex++;
 
-                document.getElementById("loading-message").textContent = "";
-
-            } catch (error) {
-
-                document.getElementById("loading-message").textContent =
-                    "Something went wrong loading this Pokemon. Please try again.";
-
-                console.error(error);
-
-            } finally {
-
-                nextButton.disabled = false;
-
+            // Loop back to the beginning at the end
+            if (currentExpandedPokemonIndex >= pokemonList.length) {
+                currentExpandedPokemonIndex = 0;
             }
         }
+
+    }
+
+    currentLoadedGeneration = generation;
+
+    // Get the selected entry
+    const entry = pokemonList[currentExpandedPokemonIndex];
+
+    currentExpandedPokemonEntry = entry;
+
+    // Retrieve its actual Pokemon information
+    const response = await fetch(
+        "https://pokeapi.co/api/v2/pokemon/" + entry.id
+    );
+
+    if (!response.ok) {
+        throw new Error("Could not find Pokemon.");
+    }
+
+    const pokemon = await response.json();
+
+    currentPokemon = pokemon;
+
+    // Display the original National Pokedex number
+    document.getElementById("pokemon-number").textContent =
+        "Pokemon #" + String(entry.baseDexId).padStart(3, "0");
+
+    // Display its picture
+    const pokemonImage = document.getElementById("pokemon-image");
+
+    pokemonImage.src =
+        pokemon.sprites.other?.["official-artwork"]?.front_default ||
+        pokemon.sprites.front_default || "";
+
+    pokemonImage.alt = entry.name;
+
+    // Make the Pokemon name easier to read
+    const displayName = entry.name
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, letter => letter.toUpperCase());
+
+    document.getElementById("pokemon-name").textContent =
+        displayName;
+
+    // Display its types
+    const types = pokemon.types.map(typeInfo => {
+        return typeInfo.type.name;
+    });
+
+    document.getElementById("pokemon-types").textContent =
+        types.join(" / ");
+
+    // Reset the rating buttons
+    const buttons = document.querySelectorAll(
+        ".rating-buttons button"
+    );
+
+    buttons.forEach(button => {
+        button.classList.remove("selected");
+    });
+
+    // Restore this player's previous rating, if one exists
+    const playerName = document.getElementById("player-name").value.trim();
+
+    const ratingKey =
+        playerName.toLowerCase() + "_" + currentPokemon.id;
+
+    const previousRating = ratings[ratingKey];
+
+    if (playerName !== "" && previousRating) {
+
+        buttons[previousRating.rating - 1].classList.add("selected");
+
+        document.getElementById("rating-message").textContent =
+            "You previously rated this Pokemon " +
+            previousRating.rating + " out of 5.";
+
+    } else {
+
+        document.getElementById("rating-message").textContent =
+            "Choose a rating!";
+
+    }
+
+    document.getElementById("loading-message").textContent = "";
+
+} catch (error) {
+
+    document.getElementById("loading-message").textContent =
+        "Something went wrong loading this Pokemon. Please try again.";
+
+    console.error(error);
+
+} finally {
+
+    nextButton.disabled = false;
+
+}
+}
+
 
         // Record the rating visually
         // Record and save the player's rating
@@ -1029,66 +1200,91 @@ function startSessionPolling() {
 
 
 // Host advances the shared Pokemon
+
 async function advanceSessionPokemon() {
 
-    if (!isSessionHost || !currentSessionCode || !currentHostKey) {
-        return;
+if (!isSessionHost || !currentSessionCode || !currentHostKey) {
+    return;
+}
+
+const button = document.getElementById("advance-session-button");
+
+button.disabled = true;
+
+try {
+
+    // Get the expanded list for the current generation
+    const generation = Number(
+        document.getElementById("generation-select").value
+    );
+
+    const pokemonList = await buildExpandedPokemonList(generation);
+
+    // Find the next entry in the expanded list
+    let nextIndex = currentExpandedPokemonIndex + 1;
+
+    // Loop back to the beginning when the generation ends
+    if (nextIndex >= pokemonList.length) {
+        nextIndex = 0;
     }
 
-    const button = document.getElementById("advance-session-button");
+    const nextEntry = pokemonList[nextIndex];
 
-    button.disabled = true;
+    // Remember the current Pokemon so we can confirm advancement
+    const oldPokemonId = currentPokemon ? currentPokemon.id : null;
 
-    try {
+    // Tell Google Sheets which Pokemon everyone should load
+    await sendSessionAction({
+        action: "advancePokemon",
+        code: currentSessionCode,
+        hostKey: currentHostKey,
+        pokemonId: nextEntry.id
+    });
 
-        const oldPokemonId = currentPokemon ? currentPokemon.id : null;
+    // Wait for the session to update
+    let advanced = false;
 
-        await sendSessionAction({
-            action: "advancePokemon",
-            code: currentSessionCode,
-            hostKey: currentHostKey
-        });
+    for (let attempt = 0; attempt < 10; attempt++) {
 
-        // Wait until the session's Pokemon number changes
-        let advanced = false;
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-        for (let attempt = 0; attempt < 10; attempt++) {
+        const result = await getSessionData(currentSessionCode);
 
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        if (
+            result.success &&
+            Number(result.session.currentPokemonId) === nextEntry.id &&
+            nextEntry.id !== oldPokemonId
+        ) {
 
-            const result = await getSessionData(currentSessionCode);
+            advanced = true;
 
-            if (
-                result.success &&
-                Number(result.session.currentPokemonId) !== oldPokemonId
-            ) {
+            await refreshSession();
 
-                advanced = true;
-                await refreshSession();
-                break;
-
-            }
-
+            break;
         }
-
-        if (!advanced) {
-            throw new Error("The session did not advance. Please try again.");
-        }
-
-    } catch (error) {
-
-        document.getElementById("session-message").textContent =
-            "Couldn't advance Pokemon: " + error.message;
-
-        console.error(error);
-
-    } finally {
-
-        button.disabled = false;
-
     }
+
+    if (!advanced) {
+        throw new Error(
+            "The session did not advance. Please try again."
+        );
+    }
+
+} catch (error) {
+
+    document.getElementById("session-message").textContent =
+        "Couldn't advance Pokemon: " + error.message;
+
+    console.error(error);
+
+} finally {
+
+    button.disabled = false;
 
 }
+
+}
+
 // ==========================================
 // SESSION RESULTS SYSTEM
 // ==========================================
