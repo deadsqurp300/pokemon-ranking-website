@@ -236,6 +236,7 @@
     
         <hr>
     
+        
         <div>
             <input
                 type="text"
@@ -244,11 +245,31 @@
                 maxlength="6"
                 style="text-transform: uppercase;"
             >
-    
+
             <button class="next-button" onclick="joinSession()">
                 Join Session
             </button>
         </div>
+
+        <hr>
+
+        <h3>Resume Host Control</h3>
+
+        <p>Already hosting this session? Enter your session code and host key.</p>
+
+        <div>
+            <input
+                type="password"
+                id="host-key-input"
+                placeholder="Enter host key"
+                autocomplete="off"
+            >
+
+            <button class="next-button" onclick="resumeSession()">
+                Resume as Host
+            </button>
+        </div>
+
     
         <p id="session-message">Not currently in a session.</p>
     
@@ -256,17 +277,61 @@
             <h3>Session Code</h3>
             <h2 id="session-code-display" style="color: #ffcb05;"></h2>
     
+<div id="host-key-display-container" style="display: none; margin-top: 10px;">
+    <p>
+        <strong>Host Key:</strong>
+        <span id="host-key-display"></span>
+    </p>
+    <button class="next-button" onclick="copyHostKey()">
+        Copy Host Key
+    </button>
+    <p style="font-size: 0.85em;">
+        Keep this key private. Anyone with it can take host control of this session.
+    </p>
+</div>
+
+<div id="change-host-key-container" style="display: none; margin-top: 15px;">
+
+    <h4>Change Host Key</h4>
+
+    <input
+        type="password"
+        id="new-host-key-input"
+        placeholder="New host key"
+        autocomplete="off"
+    >
+
+    <button class="next-button" onclick="changeHostKey()">
+        Change Host Key
+    </button>
+
+</div>
+
+
             <h3>Players</h3>
             <p id="player-list">Waiting for players...</p>
     
-            <button
-                class="next-button"
-                id="advance-session-button"
-                onclick="advanceSessionPokemon()"
-                style="display: none;"
-            >
-                Advance Pokemon
-            </button>
+            <div style="display: flex; justify-content: center; flex-wrap: wrap; gap: 10px;">
+
+                <button
+                    class="next-button"
+                    id="previous-session-button"
+                    onclick="previousSessionPokemon()"
+                    style="display: none;"
+                >
+                    Previous Pokemon
+                </button>
+
+                <button
+                    class="next-button"
+                    id="advance-session-button"
+                    onclick="advanceSessionPokemon()"
+                    style="display: none;"
+                >
+                    Next Pokemon
+                </button>
+
+            </div>
         </div>
     
     </div>
@@ -366,21 +431,22 @@
             placeholder="Enter your name"
         >
     </div>
-    <div>
-        <label for="generation-select">Choose a generation:</label>
+ 
+<div>
+    <label for="generation-select">Choose a generation:</label>
 
-        <select id="generation-select" onchange="loadRandomPokemon()">
-            <option value="1">Generation 1</option>
-            <option value="2">Generation 2</option>
-            <option value="3">Generation 3</option>
-            <option value="4">Generation 4</option>
-            <option value="5">Generation 5</option>
-            <option value="6">Generation 6</option>
-            <option value="7">Generation 7</option>
-            <option value="8">Generation 8</option>
-            <option value="9">Generation 9</option>
-        </select>
-    </div>
+    <select id="generation-select" onchange="handleGenerationChange()">
+        <option value="1">Generation 1</option>
+        <option value="2">Generation 2</option>
+        <option value="3">Generation 3</option>
+        <option value="4">Generation 4</option>
+        <option value="5">Generation 5</option>
+        <option value="6">Generation 6</option>
+        <option value="7">Generation 7</option>
+        <option value="8">Generation 8</option>
+        <option value="9">Generation 9</option>
+    </select>
+</div>
 
     <div class="pokemon-card">
 
@@ -737,6 +803,57 @@ try {
 }
 }
 
+async function handleGenerationChange() {
+
+const generation =
+    Number(document.getElementById("generation-select").value);
+
+// Outside a multiplayer session, change generations normally
+if (!currentSessionCode) {
+    loadRandomPokemon();
+    return;
+}
+
+// Only the host can change the session generation
+if (!isSessionHost) {
+    document.getElementById("generation-select").value =
+        String(currentLoadedGeneration);
+    return;
+}
+
+document.getElementById("session-message").textContent =
+    "Changing session generation...";
+
+try {
+
+    await sendSessionAction({
+        action: "changeGeneration",
+        code: currentSessionCode,
+        hostKey: currentHostKey,
+        generation: generation
+    });
+
+    // Retrieve the updated session and load its first Pokemon
+    await refreshSession();
+
+    document.getElementById("session-message").textContent =
+        "Session changed to Generation " + generation + "!";
+
+} catch (error) {
+
+    // Restore the previous generation if the change fails
+    document.getElementById("generation-select").value =
+        String(currentLoadedGeneration);
+
+    document.getElementById("session-message").textContent =
+        "Couldn't change generation: " + error.message;
+
+    console.error(error);
+
+}
+
+}
+
 
         // Record the rating visually
         // Record and save the player's rating
@@ -1002,7 +1119,12 @@ async function createSession() {
         currentSessionCode = code;
         currentHostKey = hostKey;
         isSessionHost = true;
-
+        document.getElementById("host-key-display-container").style.display =
+    "block";
+    document.getElementById("change-host-key-container").style.display =
+    "block";
+document.getElementById("host-key-display").textContent =
+    currentHostKey;
         // Remember the host credentials in this browser
         localStorage.setItem("pokemonHostSession", JSON.stringify({
             code: code,
@@ -1017,9 +1139,11 @@ async function createSession() {
         document.getElementById("session-code-display").textContent =
             code;
 
-        document.getElementById("advance-session-button").style.display =
+            document.getElementById("previous-session-button").style.display =
             "inline-block";
-            document.getElementById("generation-select").disabled = true;
+            document.getElementById("advance-session-button").style.display =
+            "inline-block";
+            document.getElementById("generation-select").disabled = false;
             document.getElementById("next-button").style.display = "none";
         // Load the first Pokemon in the session
         await refreshSession();
@@ -1110,7 +1234,10 @@ async function joinSession() {
         currentSessionCode = code;
         currentHostKey = null;
         isSessionHost = false;
-
+        document.getElementById("host-key-display-container").style.display =
+        "none";
+        document.getElementById("change-host-key-container").style.display =
+    "none";
         document.getElementById("session-message").textContent =
             "You joined session " + code + "!";
 
@@ -1119,7 +1246,9 @@ async function joinSession() {
         document.getElementById("session-code-display").textContent =
             code;
 
-        document.getElementById("advance-session-button").style.display =
+            document.getElementById("previous-session-button").style.display =
+            "none";
+            document.getElementById("advance-session-button").style.display =
             "none";
             document.getElementById("generation-select").disabled = true;
             document.getElementById("next-button").style.display = "none";
@@ -1135,6 +1264,99 @@ async function joinSession() {
         console.error(error);
 
     }
+
+}
+
+async function resumeSession() {
+
+const playerName =
+    document.getElementById("player-name").value.trim();
+
+const code =
+    document.getElementById("session-code-input").value.trim().toUpperCase();
+
+const hostKey =
+    document.getElementById("host-key-input").value.trim();
+
+if (!playerName) {
+    document.getElementById("session-message").textContent =
+        "Please enter your name first.";
+    return;
+}
+
+if (!/^[A-Z0-9]{6}$/.test(code)) {
+    document.getElementById("session-message").textContent =
+        "Please enter a valid six-character session code.";
+    return;
+}
+
+if (!hostKey) {
+    document.getElementById("session-message").textContent =
+        "Please enter your host key.";
+    return;
+}
+
+document.getElementById("session-message").textContent =
+    "Restoring host control...";
+
+try {
+
+    await sendSessionAction({
+        action: "resumeSession",
+        code: code,
+        hostKey: hostKey,
+        hostName: playerName
+    });
+
+    // Confirm that the session still exists
+    const result = await getSessionData(code);
+
+    if (!result.success) {
+        throw new Error("Could not find the session.");
+    }
+
+    currentSessionCode = code;
+    currentHostKey = hostKey;
+    isSessionHost = true;
+    document.getElementById("host-key-display-container").style.display =
+    "block";
+    document.getElementById("change-host-key-container").style.display =
+    "block";
+document.getElementById("host-key-display").textContent =
+    currentHostKey;
+    // Save the credentials in this browser
+    localStorage.setItem("pokemonHostSession", JSON.stringify({
+        code: code,
+        hostKey: hostKey
+    }));
+
+    document.getElementById("session-message").textContent =
+        "Host control restored for session " + code + "!";
+
+    document.getElementById("session-details").style.display = "block";
+    document.getElementById("results-section").style.display = "block";
+    document.getElementById("session-code-display").textContent =
+        code;
+
+    document.getElementById("previous-session-button").style.display =
+        "inline-block";
+    document.getElementById("advance-session-button").style.display =
+        "inline-block";
+    document.getElementById("generation-select").disabled = false;
+    document.getElementById("next-button").style.display = "none";
+
+    await refreshSession();
+
+    startSessionPolling();
+
+} catch (error) {
+
+    document.getElementById("session-message").textContent =
+        "Couldn't resume session: " + error.message;
+
+    console.error(error);
+
+}
 
 }
 
@@ -1284,7 +1506,86 @@ try {
 }
 
 }
+// Host moves the shared Pokemon backward
+async function previousSessionPokemon() {
 
+if (!isSessionHost || !currentSessionCode || !currentHostKey) {
+    return;
+}
+
+const button = document.getElementById("previous-session-button");
+button.disabled = true;
+
+try {
+
+    const generation = Number(
+        document.getElementById("generation-select").value
+    );
+
+    const pokemonList = await buildExpandedPokemonList(generation);
+
+    // Find the previous Pokemon
+    let previousIndex = currentExpandedPokemonIndex - 1;
+
+    // Loop to the end if we're at the beginning
+    if (previousIndex < 0) {
+        previousIndex = pokemonList.length - 1;
+    }
+
+    const previousEntry = pokemonList[previousIndex];
+    const oldPokemonId = currentPokemon ? currentPokemon.id : null;
+
+    // Tell Google Sheets which Pokemon everyone should load
+    await sendSessionAction({
+        action: "advancePokemon",
+        code: currentSessionCode,
+        hostKey: currentHostKey,
+        pokemonId: previousEntry.id
+    });
+
+    // Wait for the session to update
+    let movedBack = false;
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const result = await getSessionData(currentSessionCode);
+
+        if (
+            result.success &&
+            Number(result.session.currentPokemonId) === previousEntry.id &&
+            previousEntry.id !== oldPokemonId
+        ) {
+
+            movedBack = true;
+
+            await refreshSession();
+
+            break;
+        }
+    }
+
+    if (!movedBack) {
+        throw new Error(
+            "The session did not move backward. Please try again."
+        );
+    }
+
+} catch (error) {
+
+    document.getElementById("session-message").textContent =
+        "Couldn't go to the previous Pokemon: " + error.message;
+
+    console.error(error);
+
+} finally {
+
+    button.disabled = false;
+
+}
+
+}
 // ==========================================
 // SESSION RESULTS SYSTEM
 // ==========================================
@@ -1747,6 +2048,81 @@ section.scrollIntoView({
 });
 
 }
+
+function copyHostKey() {
+
+if (!currentHostKey) {
+    return;
+}
+
+navigator.clipboard.writeText(currentHostKey)
+    .then(() => {
+        document.getElementById("session-message").textContent =
+            "Host key copied to clipboard!";
+    })
+    .catch(error => {
+        document.getElementById("session-message").textContent =
+            "Couldn't copy the host key. Please copy it manually.";
+        console.error(error);
+    });
+
+}
+
+
+async function changeHostKey() {
+
+const newKey =
+    document.getElementById("new-host-key-input").value;
+
+if (!newKey) {
+    document.getElementById("session-message").textContent =
+        "Please enter a new host key.";
+    return;
+}
+
+document.getElementById("session-message").textContent =
+    "Changing host key...";
+
+try {
+
+    await sendSessionAction({
+        action: "changeHostKey",
+        code: currentSessionCode,
+        currentHostKey: currentHostKey,
+        newHostKey: newKey
+    });
+
+    // Update the active host key
+    currentHostKey = newKey;
+
+    // Update the displayed key
+    document.getElementById("host-key-display").textContent =
+        newKey;
+
+    // Update saved browser credentials
+    localStorage.setItem("pokemonHostSession", JSON.stringify({
+        code: currentSessionCode,
+        hostKey: newKey
+    }));
+
+    // Clear the input field
+    document.getElementById("new-host-key-input").value = "";
+
+    document.getElementById("session-message").textContent =
+        "Host key successfully changed!";
+
+} catch (error) {
+
+    document.getElementById("session-message").textContent =
+        "Couldn't change host key: " + error.message;
+
+    console.error(error);
+
+}
+
+}
+
+
 
     </script>
 
